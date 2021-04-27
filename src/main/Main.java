@@ -4,16 +4,11 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Queue;
 
-import com.sun.javafx.print.Units;
-
-import bwapi.Color;
 import bwapi.DefaultBWListener;
 import bwapi.Game;
 import bwapi.Mirror;
 import bwapi.Player;
-import bwapi.Position;
 import bwapi.Race;
 import bwapi.TilePosition;
 import bwapi.Unit;
@@ -28,8 +23,8 @@ public class Main extends DefaultBWListener {
 	List<Unit> minerals;
 	List<UnitType> unitQueue = new ArrayList<>();
 	List<Integer> selectedMinerals = new ArrayList<Integer>();
-	List<Unit> geysers;
 	Map<UnitType, List<Unit>> units = new HashMap<UnitType, List<Unit>>();
+	UnitType currentType;
 
 	public static void main(String[] args) {
 		new Main().run();
@@ -52,7 +47,6 @@ public class Main extends DefaultBWListener {
 		game.setLocalSpeed(10);
 
 		minerals = BWTA.getNearestBaseLocation(game.self().getStartLocation().getPoint()).getMinerals();
-		geysers = BWTA.getNearestBaseLocation(game.self().getStartLocation().getPoint()).getGeysers();
 
 		for (int i = 0; i < 12; i++) {
 			unitQueue.add(UnitType.Terran_SCV);
@@ -72,7 +66,7 @@ public class Main extends DefaultBWListener {
 
 		minDistance = Double.MAX_VALUE;
 
-		for (int j = 0; j < minerals.size(); j++) {
+		for (int j = 0; j < minerals.size() - selectedMinerals.size(); j++) {
 			if (selectedMinerals.contains(j))
 				continue;
 			mineral = minerals.get(j);
@@ -83,60 +77,101 @@ public class Main extends DefaultBWListener {
 				minIndex = j;
 			}
 		}
-
 		unit.rightClick(minerals.get(minIndex));
 		selectedMinerals.add(minIndex);
-
+		
+		currentType = unitQueue.get(0);
 	}
-	int index = 0;
+
 	@Override
 	public void onFrame() {
-		if(game.getFrameCount() % 6 != 0) return;
-		
-		if(unitQueue.isEmpty()) return;
-		
-		if(unitQueue.get(0) == UnitType.Terran_SCV && units.containsKey(UnitType.Terran_Command_Center)) {			
-			if(unitQueue.get(0) == UnitType.Terran_SCV && !units.get(UnitType.Terran_Command_Center).get(0).isTraining()) {
-				units.get(UnitType.Terran_Command_Center).get(0).train(unitQueue.get(0));
-				unitQueue.remove(0);
-				System.out.println(++index);
+		if (game.getFrameCount() % 12 != 0)
+			return;
+
+		if (unitQueue.isEmpty())
+			return;
+
+		System.out.println(unitQueue);
+
+		if (game.self().supplyTotal() - game.self().supplyUsed() == 0
+				&& unitQueue.get(0) != UnitType.Terran_Supply_Depot) {
+			unitQueue.add(0, UnitType.Terran_Supply_Depot);
+		}
+
+		if (currentType == UnitType.Terran_SCV && units.containsKey(UnitType.Terran_Command_Center)) {
+			if (currentType == UnitType.Terran_SCV && !units.get(UnitType.Terran_Command_Center).get(0).isTraining()) {
+				units.get(UnitType.Terran_Command_Center).get(0).train(currentType);
+				if(unitQueue.indexOf(currentType) + 1 < unitQueue.size()) {					
+					currentType = unitQueue.get(unitQueue.indexOf(currentType) + 1);
+				} else {
+					currentType = null;
+				}
 			}
-			
+		}
+
+		if (units.containsKey(UnitType.Terran_Barracks)) {
+			for (Unit barrack : units.get(UnitType.Terran_Barracks)) {
+				barrack.train(UnitType.Terran_Marine);
+			}
+		}
+
+		if (currentType == UnitType.Terran_Supply_Depot || currentType == UnitType.Terran_Barracks
+				|| currentType == UnitType.Terran_Refinery) {
+			Unit worker = getNotWorkingWorker();
+			if (worker.canBuild(currentType)) {
+				TilePosition position = null;
+
+				if (game.self().getStartLocation().getX() < 50)
+					position = new TilePosition(game.self().getStartLocation().getX() + 6,
+							game.self().getStartLocation().getY());
+				else
+					position = new TilePosition(game.self().getStartLocation().getX() - 6,
+							game.self().getStartLocation().getY());
+
+				if (units.containsKey(currentType)) {
+					position = units.get(currentType).get(units.get(currentType).size() - 1).getTilePosition();
+				}
+
+				worker.build(currentType, getPositionCanBuild(currentType, worker, position));
+				
+				if(unitQueue.indexOf(currentType) + 1 < unitQueue.size()) {					
+					currentType = unitQueue.get(unitQueue.indexOf(currentType) + 1);
+				} else {
+					currentType = null;
+				}
+			}
 		}
 	}
-//		Unit barracks = null;
-//		if(units.containsKey(UnitType.Terran_Barracks)) barracks = units.get(UnitType.Terran_Barracks).get(0);
-//		
-//		if(barracks != null && game.self().supplyTotal() - game.self().supplyUsed() != 0) {
-//			System.out.println(barracks.canTrain(UnitType.Terran_Marine));
-//			if(barracks.canTrain(UnitType.Terran_Marine)) {
-//				barracks.train(UnitType.Terran_Marine);
-//			}				
-//		}
-//		
-//		Unit commandCenter = units.get(UnitType.Terran_Command_Center).get(0);
-//		if(commandCenter.canTrain(UnitType.Terran_SCV) && units.get(UnitType.Terran_SCV).size() < minerals.size()) {
-//			commandCenter.train(UnitType.Terran_SCV);
-//		}
-//		
-//		Unit scv = units.get(UnitType.Terran_SCV).get(0);
-//		game.drawTextMap(scv.getPoint(), Integer.toString(scv.getID()));
-//		
-//		if(scv.canBuild(UnitType.Terran_Barracks) && !units.containsKey(UnitType.Terran_Barracks)) {
-//			TilePosition position = new TilePosition(commandCenter.getTilePosition().getX() - 6 , commandCenter.getTilePosition().getY());
-//			boolean ans = scv.build(UnitType.Terran_Barracks, position);
-//			if(!ans) position = new TilePosition(commandCenter.getTilePosition().getX() + 6 , commandCenter.getTilePosition().getY());
-//			scv.build(UnitType.Terran_Barracks, position);
-//		}
-//		
-//		if(scv.canBuild(UnitType.Terran_Supply_Depot) && units.containsKey(UnitType.Terran_Barracks) && !units.containsKey(UnitType.Terran_Supply_Depot)) {
-//			TilePosition position = new TilePosition(units.get(UnitType.Terran_Barracks).get(0).getTilePosition().getX(), units.get(UnitType.Terran_Barracks).get(0).getTilePosition().getY() - 3);
-//			scv.build(UnitType.Terran_Supply_Depot, position);
-//		}
-//	}
+
+	private TilePosition getPositionCanBuild(UnitType type, Unit unit, TilePosition position) {
+
+		if (UnitType.Terran_Refinery == type) {
+			Unit gas = BWTA.getNearestBaseLocation(game.self().getStartLocation().getPoint()).getGeysers().get(0);
+			return gas.getTilePosition();
+		}
+
+		for (int i = 1; i <= 128; i++) {
+			if (unit.canBuild(type, new TilePosition(position.getX() + i, position.getY()))) {
+				position = new TilePosition(position.getX() + i, position.getY());
+				break;
+			} else if (unit.canBuild(type, new TilePosition(position.getX() - i, position.getY()))) {
+				position = new TilePosition(position.getX() - i, position.getY());
+				break;
+			} else if (unit.canBuild(type, new TilePosition(position.getX(), position.getY() + i))) {
+				position = new TilePosition(position.getX(), position.getY() + i);
+				break;
+			} else if (unit.canBuild(type, new TilePosition(position.getX(), position.getY() - i))) {
+				position = new TilePosition(position.getX(), position.getY() - i);
+				break;
+			}
+		}
+
+		return position;
+	}
 
 	private Unit getNotWorkingWorker() {
 		UnitType workerType = null;
+
 		if (game.self().getRace() == Race.Terran) {
 			workerType = UnitType.Terran_SCV;
 		} else if (game.self().getRace() == Race.Zerg) {
@@ -146,15 +181,16 @@ public class Main extends DefaultBWListener {
 		}
 
 		for (Unit unit : units.get(workerType)) {
-			if (!(unit.isBlind() || unit.isGatheringGas() || unit.isGatheringMinerals()))
+			if (!(unit.isMoving() || unit.isGatheringGas() || unit.isGatheringMinerals()))
 				return unit;
 		}
 
 		for (int i = 0; i < units.get(workerType).size(); i++) {
-			selectedMinerals.remove(0);
-			return units.get(workerType).get(0);
+			if (units.get(workerType).get(i).isGatheringMinerals()) {
+				return units.get(workerType).get(i);
+			}
 		}
-		
+
 		return null;
 	}
 
@@ -165,6 +201,7 @@ public class Main extends DefaultBWListener {
 			if (type == UnitType.Terran_SCV || type == UnitType.Protoss_Probe || type == UnitType.Zerg_Drone) {
 				setWorkerToMinerals(unit);
 			}
+			unitQueue.remove(unit.getType());
 		}
 	}
 
